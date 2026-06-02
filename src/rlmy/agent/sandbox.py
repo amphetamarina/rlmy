@@ -16,6 +16,7 @@ import json
 import os
 import re
 import shutil
+from importlib import resources
 from pathlib import Path
 
 from rich import print as rprint
@@ -38,37 +39,37 @@ _SESSION_JOURNAL_TEMPLATE = "# Session Journal\n"
 _VALID_NAME_RE = re.compile(r"[^\w\-]")
 
 
-def _read_template(relative_path: str, fallback: str) -> str:
+def _copy_sample_workspace(dest: Path) -> None:
     """
-    Read a template file from the canonical source under 'prototype/sample_workspace/'.
-    Falls back to provided string if the file doesn't exist.
+    Recursively copy the bundled 'sample_workspace/' tree into a new workspace.
 
-    Why read from file instead of embedding: Templates contain code examples,
-    regex patterns, and backtick-heavy markdown. Embedding as Python strings
-    requires escaping backslashes, which is fragile. Single source of truth.
+    The template folder ships INSIDE the package (rlmy/sample_workspace/) and is
+    located via importlib.resources, so it works under any install method
+    (editable, `uv tool install`, pip, Docker). Whatever files live in that
+    folder get copied automatically — no per-file names hardcoded here.
+
+    Never overwrites existing files (preserves user data on re-entry).
     """
-    template_path = _PROJECT_ROOT / "prototype" / "sample_workspace" / relative_path
-    if template_path.exists():
-        return template_path.read_text(encoding="utf-8")
-    return fallback
+    try:
+        src_root = resources.files("rlmy") / "sample_workspace"
+    except (ModuleNotFoundError, AttributeError):
+        return  # package data unavailable; ensure_structure handles the journal seed
 
+    def _recurse(src_dir, rel: Path) -> None:
+        for entry in src_dir.iterdir():
+            target = dest / rel / entry.name
+            if entry.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+                _recurse(entry, rel / entry.name)
+            else:
+                if not target.exists():
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text(
+                        entry.read_text(encoding="utf-8"), encoding="utf-8"
+                    )
 
-def _read_agents_template() -> str:
-    return _read_template(
-        "AGENTS.md",
-        "# JOURNAL SYSTEM INSTRUCTIONS\n\n"
-        "Read session-journal.md to restore context on restart.\n"
-        "Write narrative entries every 2-5 steps. Write checkpoints every ~10 entries.\n",
-    )
-
-
-def _read_mapreduce_skill() -> str:
-    return _read_template(
-        "skills/mapreduce.md",
-        '"MapReduce", in our context, refers to intelligently breaking one task '
-        "in self-contained subtasks (chunks of work), then mapping each task to "
-        "sub-agents, before \"reducing\" (consolidating) the final result.\n",
-    )
+    if src_root.is_dir():
+        _recurse(src_root, Path("."))
 
 
 class SandboxManager:
@@ -160,23 +161,19 @@ class SandboxManager:
         ws = self.sandbox_root / name
         ws.mkdir(parents=True, exist_ok=True)
 
-        # Directories
+        # Runtime directories (not part of the bundled template folder)
         (ws / "input").mkdir(exist_ok=True)
         (ws / "output").mkdir(exist_ok=True)
-        (ws / "skills").mkdir(exist_ok=True)
 
-        # Template files — only if they don't exist (never overwrite user data)
-        agents_path = ws / "AGENTS.md"
-        if not agents_path.exists():
-            agents_path.write_text(_read_agents_template(), encoding="utf-8")
+        # Copy the bundled sample_workspace/ tree (AGENTS.md, skills/, etc.)
+        # Recursive + data-driven: whatever ships in the folder lands here.
+        # Never overwrites existing files (preserves user data on re-entry).
+        _copy_sample_workspace(ws)
 
+        # Session journal seed — a runtime file, not part of the template folder.
         journal_path = ws / "session-journal.md"
         if not journal_path.exists():
             journal_path.write_text(_SESSION_JOURNAL_TEMPLATE, encoding="utf-8")
-
-        mapreduce_path = ws / "skills" / "mapreduce.md"
-        if not mapreduce_path.exists():
-            mapreduce_path.write_text(_read_mapreduce_skill(), encoding="utf-8")
 
         return ws
 

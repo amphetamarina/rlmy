@@ -1,0 +1,3 @@
+"MapReduce" , in our context, refers to intelligently breaking one task in self-contained subtasks (chunks of work), then mapping each task to sub-agents, before "reducing" (consolidating) the final result.
+
+There is one key aspect: the sub-agents will be instructed to read files in full. They will NOT try to guess structure and use regexes to try to sift throught contents. no. they will read entire files into their context, to do their assigned task.

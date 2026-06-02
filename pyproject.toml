@@ -1,6 +1,6 @@
 [project]
 name = "rlmy"
-version = "0.1.0"
+version = "0.1.1"
 description = "An interactive RLM (Recursive Language Model) agent built on DSPy"
 readme = "README.md"
 license = {text = "MIT"}
@@ -32,8 +32,17 @@ dev = [
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+include-package-data = true
+
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# Ship the bundled sample_workspace/ template tree (AGENTS.md, skills/*.md, etc.)
+# inside the wheel. Without this, setuptools packages ONLY .py files and these
+# templates would silently vanish from the installed package.
+rlmy = ["sample_workspace/**/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

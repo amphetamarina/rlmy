@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+sandbox/
+local/
+build/
+dist/
+.git/
+mcp_servers.json
