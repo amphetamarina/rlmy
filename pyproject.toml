@@ -1,0 +1,46 @@
+[project]
+name = "rlmy"
+version = "0.1.0"
+description = "An interactive RLM (Recursive Language Model) agent built on DSPy"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+dependencies = [
+    "dspy>=3.2.1",
+    "boto3>=1.42.0",
+    "nest-asyncio>=1.6.0",
+    "mcp>=1.26.0",
+    "rich>=14.0.0",
+    "markitdown>=0.1.5",
+    "prompt-toolkit>=3.0.50",
+    "pydantic>=2.12.0",
+    "platformdirs>=4.0.0",
+    "strands-agents-tools>=0.4.1",
+]
+
+[project.scripts]
+rlmy = "rlmy.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov",
+    "ruff",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-v"
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+

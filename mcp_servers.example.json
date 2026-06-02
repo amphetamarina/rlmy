@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "mcp_builder": {
+      "command": "builder-mcp",
+      "args": [],
+      "tools": ["ReadInternalWebsites", "InternalSearch", "InternalCodeSearch", "QuipEditor"]
+    }
+  }
+}

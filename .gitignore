@@ -1,0 +1,35 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Runtime data (personal workspaces, trajectories, session state)
+sandbox/*
+!sandbox/.gitkeep
+filesystem*/
+backups/
+.cache.json
+prototype/.trajectory_state.jsonl
+
+# MCP config with secrets (use mcp_servers.example.json as template)
+mcp_servers.json
+!mcp_servers.example.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Legacy files (not part of the portable codebase)
+main.py
+long-context.txt
+
+# Local-only files (archives, dev journals, scratchpads)
+local/
