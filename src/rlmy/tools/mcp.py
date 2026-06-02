@@ -34,7 +34,15 @@ logger = logging.getLogger(__name__)
 # Falls back to project-root mcp_servers.json for dev convenience if present.
 _USER_CONFIG_PATH = Path.home() / ".config" / "rlmy" / "mcp_servers.json"
 _DEV_CONFIG_PATH = Path(__file__).resolve().parent.parent / "mcp_servers.json"
-_DEFAULT_CONFIG_PATH = _USER_CONFIG_PATH if _USER_CONFIG_PATH.exists() else _DEV_CONFIG_PATH
+# Priority: user config if present -> dev/project config if present (dev convenience)
+# -> user config path as the default even when absent, so the "not found" warning
+# names the WRITABLE location (~/.config/rlmy/) instead of the buried package path.
+if _USER_CONFIG_PATH.exists():
+    _DEFAULT_CONFIG_PATH = _USER_CONFIG_PATH
+elif _DEV_CONFIG_PATH.exists():
+    _DEFAULT_CONFIG_PATH = _DEV_CONFIG_PATH
+else:
+    _DEFAULT_CONFIG_PATH = _USER_CONFIG_PATH
 
 
 # JSON Schema type -> Python type mapping
@@ -232,7 +240,8 @@ class MCPConnector:
         if not config_path.exists():
             logger.warning(
                 "MCP config not found at %s — no MCP servers will load. "
-                "Copy mcp_servers.example.json to mcp_servers.json to configure.",
+                "Create this file to configure MCP servers "
+                "(see mcp_servers.example.json in the repo for the format).",
                 config_path,
             )
             return
