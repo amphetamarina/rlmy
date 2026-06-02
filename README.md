@@ -53,7 +53,7 @@ To skip the wizard (headless/CI):
 
 If your credentials are set, run `rlmy` and type:
 
-> *"curl https://calmcode.io/static/data/pokemon.json and teach me something surprising about it."*
+> *curl https://calmcode.io/static/data/pokemon.json straight into a variable and teach me something surprising about it. Make it pretty.*
 
 Watch it fetch the data, explore it with code, and teach you something you didn't know. This is the RLM loop in action: it'll iterate until it has a neat insight.
 
