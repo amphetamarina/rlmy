@@ -4,6 +4,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
+build/
+dist/
 
 # Runtime data (personal workspaces, trajectories, session state)
 sandbox/*
