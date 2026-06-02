@@ -2,6 +2,8 @@
 
 An interactive RLM (Recursive Language Model) agent built on DSPy.
 
+> **rlmy** is pronounced **"ar-leh-mee"** — like the letters **R-L-M** out loud ("ar-el-em"), but let them slur together. Think *"RLM-y."*
+
 ## What is this?
 
 - An AI coding agent that runs in your terminal
@@ -53,9 +55,11 @@ To skip the wizard (headless/CI):
 
 If your credentials are set, run `rlmy` and type:
 
-> *curl https://calmcode.io/static/data/pokemon.json straight into a variable and teach me something surprising about it. Make it pretty.*
+> *curl https://calmcode.io/static/data/pokemon.json straight into a variable and teach me something about it.*
 
 Watch it fetch the data, explore it with code, and teach you something you didn't know. This is the RLM loop in action: it'll iterate until it has a neat insight.
+
+![demo-rlmy-pokemon](rlmy-pokemon.png)
 
 ## Configuration
 
