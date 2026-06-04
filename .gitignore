@@ -35,3 +35,4 @@ long-context.txt
 
 # Local-only files (archives, dev journals, scratchpads)
 local/
+uv.lock

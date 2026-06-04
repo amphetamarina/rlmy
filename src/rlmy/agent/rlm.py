@@ -24,6 +24,7 @@ from typing import Any, Callable, ClassVar, List
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.key_binding import KeyBindings
 
 import dspy
 from pydantic import BaseModel, ConfigDict
@@ -180,11 +181,31 @@ _completer = WordCompleter(
     sentence=True,  # complete the whole input, not just the last word
 )
 
+# Keybinding for clipboard image paste (Ctrl+\)
+_kb = KeyBindings()
+
+@_kb.add('c-\\')
+def _paste_clipboard_image(event):
+    """Paste image from clipboard inline at cursor position."""
+    from rlmy.agent.clipboard import save_clipboard_image_inline, RLMY_IMAGE_DIR
+    
+    inline_text, error = save_clipboard_image_inline(temp_dir=RLMY_IMAGE_DIR)
+    
+    if error:
+        # Show error inline
+        event.app.output.write(f" [❌ {error}] ")
+        event.app.output.flush()
+        return
+    
+    # Insert inline text at cursor
+    event.current_buffer.insert_text(inline_text)
+
 _session = PromptSession(
     history=InMemoryHistory(),
     multiline=True,
     completer=_completer,
     complete_while_typing=False,  # only complete on Tab press
+    key_bindings=_kb,
 )
 
 
@@ -271,7 +292,7 @@ def prompt_user(question: str, print_only=False, header: str = ""):
             )
         )
         rprint(
-            "[dim](Enter = newline. Alt+Enter to submit. Ctrl+C to cancel. Tab for commands.)[/dim]"
+            "[dim](Enter = newline. Alt+Enter to submit. Ctrl+\\ to paste image. Ctrl+C to cancel. Tab for commands.)[/dim]"
         )
 
         # Temporarily restore default SIGINT so Ctrl+C works during input.
@@ -443,15 +464,6 @@ def build_status_header(ctx: RLMContext) -> str:
     ) for e in ctx.trajectory)
     if traj_tokens:
         parts.append(f"~{traj_tokens:,} traj tokens")
-
-    # Cost from the RLM's own history — canonical path
-    try:
-        last_entry = ctx.rlm.history[-1]
-        cost = last_entry.get("cost", 0) or 0
-        if cost > 0:
-            parts.append(f"${cost:.4f}")
-    except (IndexError, KeyError, TypeError, AttributeError):
-        pass
 
     # Auto-warning when trajectory is over budget
     if traj_tokens > DEFAULT_TOTAL_BUDGET:
