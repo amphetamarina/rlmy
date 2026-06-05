@@ -8,18 +8,14 @@ Usage:
 
 import re
 import signal
+import subprocess
 import time
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
-from strands_tools.shell import shell as _strands_shell
 
 _console = Console()
-
-# Noise filter: strands' PTY spawns a subprocess that triggers pydevd warnings.
-# These leak into stdout and pollute the command output.
-_PYDEVD_NOISE = re.compile(r"\d+\.\d+s - pydevd:.*\n?", re.MULTILINE)
 
 
 # =============================================================================
@@ -267,25 +263,26 @@ def _ask_permission(command: str, reason: str | None) -> tuple[str, str]:
 
 
 def _execute(command, work_dir, timeout) -> str:
-    """Run command via strands shell, return plain text."""
-    result = _strands_shell(
-        command=command,
-        work_dir=work_dir or None,
-        timeout=timeout,
-        non_interactive=True,
-    )
-
-    if isinstance(result, dict):
-        parts = []
-        for item in result.get("content", []):
-            text = item.get("text", "") if isinstance(item, dict) else str(item)
-            if text:
-                parts.append(text)
-        raw = "\n---\n".join(parts) if parts else str(result)
-    else:
-        raw = str(result)
-
-    return _PYDEVD_NOISE.sub("", raw).strip()
+    """Run command via subprocess, return plain text output."""
+    try:
+        result = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=work_dir or None,
+        )
+        output = result.stdout
+        if result.stderr:
+            output += "\n[stderr]\n" + result.stderr
+        if result.returncode != 0:
+            output += f"\n[exit code: {result.returncode}]"
+        return output.strip()
+    except subprocess.TimeoutExpired:
+        return f"[Error] Command timed out after {timeout}s"
+    except Exception as e:
+        return f"[Error] {e}"
 
 
 # =============================================================================

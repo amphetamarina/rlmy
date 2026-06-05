@@ -93,13 +93,13 @@ class SandboxManager:
     ):
         # Env overrides > explicit args > defaults
         self.sandbox_root = Path(
-            os.environ.get("RLM_SANDBOX_ROOT")
-            or sandbox_root
+            sandbox_root
+            or os.environ.get("RLM_SANDBOX_ROOT")
             or _DEFAULT_SANDBOX_ROOT
         )
         self.cache_path = Path(
-            os.environ.get("RLM_CACHE_PATH")
-            or cache_path
+            cache_path
+            or os.environ.get("RLM_CACHE_PATH")
             or (self.sandbox_root / ".cache.json")
         )
         # Ensure sandbox root exists

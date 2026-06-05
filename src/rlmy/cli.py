@@ -79,6 +79,7 @@ def _ensure_config() -> tuple[str, str]:
 
 def main():
     """Main CLI entry point for RLMY."""
+    print("Starting RLMY...")
     args = _parse_args()
 
     try:
