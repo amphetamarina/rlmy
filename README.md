@@ -1,6 +1,4 @@
-# rlmy
-
-An interactive RLM (Recursive Language Model) agent built on DSPy.
+![hero-graphic](assets/hero1.png)
 
 > **rlmy** is pronounced **"ar-leh-mee"** — like the letters **R-L-M** out loud ("ar-el-em"), but let them slur together. Think *"RLM-y."*
 
@@ -59,7 +57,7 @@ If your credentials are set, run `rlmy` and type:
 
 Watch it fetch the data, explore it with code, and teach you something you didn't know. This is the RLM loop in action: it'll iterate until it has a neat insight.
 
-![demo-rlmy-pokemon](rlmy-pokemon.png)
+![demo-rlmy-pokemon](assets/rlmy-pokemon.png)
 
 ## Configuration
 
