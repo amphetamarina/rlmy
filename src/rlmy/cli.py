@@ -31,6 +31,15 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Override cache file (default: sandbox/.cache.json, env: RLM_CACHE_PATH)",
     )
+    from .agent.interpreters import INTERPRETER_CHOICES
+
+    parser.add_argument(
+        "--interpreter",
+        choices=INTERPRETER_CHOICES,
+        default=None,
+        help="Code interpreter to use (default: monty; env: RLM_INTERPRETER). "
+        "'monty' is pip-only with no extra setup; 'deno'/'pyodide' needs Deno installed.",
+    )
     return parser.parse_args()
 
 
@@ -77,37 +86,53 @@ def _ensure_config() -> tuple[str, str]:
         return config.get_models()
 
 
+def _ensure_deno_or_exit() -> None:
+    """Verify Deno is available (only the Deno/Pyodide interpreter needs it).
+
+    Checks PATH and common install locations; adds the dir to PATH for child
+    processes if found there. Exits with install instructions if missing.
+    """
+    import shutil
+    from pathlib import Path
+
+    deno_path = shutil.which("deno")
+    if not deno_path:
+        common_locations = [
+            Path.home() / ".deno" / "bin" / "deno",
+            Path("/usr/local/bin/deno"),
+        ]
+        for loc in common_locations:
+            if loc.exists():
+                deno_path = str(loc)
+                # Add to PATH for child processes (DSPy's PythonInterpreter needs it).
+                os.environ["PATH"] = str(loc.parent) + os.pathsep + os.environ.get("PATH", "")
+                break
+
+    if not deno_path:
+        print("❌ Deno is required for the 'deno' interpreter but was not found.", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("   Install with:", file=sys.stderr)
+        print("     curl -fsSL https://deno.land/install.sh | sh", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("   Then restart your terminal and run rlmy again.", file=sys.stderr)
+        print("   Or use the default interpreter (no Deno needed): rlmy --interpreter monty", file=sys.stderr)
+        sys.exit(1)
+
+
 def main():
     """Main CLI entry point for RLMY."""
     print("Starting RLMY...")
     args = _parse_args()
 
     try:
-        # Step 0: Check Deno is installed (required for WASM sandbox)
-        import shutil
-        deno_path = shutil.which("deno")
-        if not deno_path:
-            # Check common install locations (user may not have restarted shell)
-            from pathlib import Path
-            common_locations = [
-                Path.home() / ".deno" / "bin" / "deno",
-                Path("/usr/local/bin/deno"),
-            ]
-            for loc in common_locations:
-                if loc.exists():
-                    deno_path = str(loc)
-                    # Add to PATH for child processes (dspy's PythonInterpreter needs it)
-                    os.environ["PATH"] = str(loc.parent) + os.pathsep + os.environ.get("PATH", "")
-                    break
+        # Step 0: Deno is only needed for the Deno/Pyodide interpreter. The
+        # default (Monty) is pip-only, so we resolve the choice first and only
+        # enforce the Deno requirement when that interpreter is actually selected.
+        from .agent.interpreters import resolve_interpreter_kind
 
-        if not deno_path:
-            print("❌ Deno is required but not found.", file=sys.stderr)
-            print("", file=sys.stderr)
-            print("   Install with:", file=sys.stderr)
-            print("     curl -fsSL https://deno.land/install.sh | sh", file=sys.stderr)
-            print("", file=sys.stderr)
-            print("   Then restart your terminal and run rlmy again.", file=sys.stderr)
-            sys.exit(1)
+        interp_kind = resolve_interpreter_kind(args.interpreter)
+        if interp_kind == "deno":
+            _ensure_deno_or_exit()
 
         # Step 1: Ensure config exists (wizard if needed)
         main_model, sub_model = _ensure_config()
@@ -123,6 +148,7 @@ def main():
         asyncio.run(run_agent(
             sandbox_root=args.sandbox_root,
             cache_path=args.cache_path,
+            interpreter=interp_kind,
         ))
 
     except RuntimeError as e:

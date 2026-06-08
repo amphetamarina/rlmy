@@ -30,8 +30,10 @@ mcp_servers.json
 Thumbs.db
 
 # Legacy files (not part of the portable codebase)
-main.py
-long-context.txt
+# NOTE: anchored with a leading slash so this only matches a root-level main.py,
+# NOT src/rlmy/agent/main.py (the live CLI entrypoint, which MUST be tracked).
+/main.py
+tests/spike*
 
 # Local-only files (archives, dev journals, scratchpads)
 local/

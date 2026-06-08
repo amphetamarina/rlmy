@@ -23,5 +23,3 @@ Compare that to what pre-existed in the codebase.
 - [ ] check security gaps and logging issues - we shouldn't log PII (personally identifiable information) for example.
 
 address nitpicks, or flag to me otherwise so we can make a decision together.
-
-start one new sub-agent. handoff the entire context and task description and goals. then ask it to act as 
