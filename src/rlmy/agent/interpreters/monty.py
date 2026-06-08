@@ -36,7 +36,6 @@ from pydantic_monty import (
     MontyRepl,
     MontyRuntimeError,
     MontySyntaxError,
-    ResourceLimits,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,7 +58,6 @@ class MontyInterpreter:
         tools: dict[str, Callable[..., Any]] | None = None,
         output_fields: list[dict] | None = None,
         snapshot_path: Path | str | None = None,
-        resource_limits: ResourceLimits | None = None,
     ) -> None:
         """
         Args:
@@ -71,12 +69,10 @@ class MontyInterpreter:
                 sets this before each run.
             snapshot_path: If given, the REPL session is loaded from this file on the
                 first execute() and saved to it after each successful execute().
-            resource_limits: Optional Monty resource limits (memory, duration, etc.).
         """
         self._tools: dict[str, Callable[..., Any]] = dict(tools) if tools else {}
         self.output_fields: list[dict] | None = output_fields
         self._snapshot_path: Path | None = Path(snapshot_path) if snapshot_path else None
-        self._resource_limits: ResourceLimits | None = resource_limits
 
         self._repl: MontyRepl = self._new_repl()
         # Whether we've attempted the one-time load from snapshot_path yet.
@@ -85,7 +81,7 @@ class MontyInterpreter:
     # ── Lifecycle ────────────────────────────────────────────────────────
 
     def _new_repl(self) -> MontyRepl:
-        return MontyRepl(limits=self._resource_limits)
+        return MontyRepl()
 
     def start(self) -> None:
         """No-op: Monty needs no warmup. Present to satisfy the protocol."""
@@ -123,6 +119,35 @@ class MontyInterpreter:
         """
         return self._snapshot_path is not None
 
+    @property
+    def capabilities_hint(self) -> str:
+        """Runtime-capability blurb woven into the agent's instructions.
+
+        Monty is a Python SUBSET with a small stdlib, so LLM-generated code that
+        assumes CPython (import random/time/collections/…) fails one module at a
+        time and burns iterations. We state the real ceiling up front so the agent
+        doesn't probe. Sourced FROM the interpreter (opt-in attribute, like
+        `restores_state`) so the prompt stays correct when the interpreter is
+        swapped — a non-Monty interpreter simply doesn't define this, and the
+        caller's getattr default contributes nothing.
+
+        Static (not runtime-probed) — accurate as of pydantic_monty 0.0.18; if that
+        dependency is upgraded, re-probe the available modules and update this list.
+        """
+        return (
+            "Your code runs in **Monty**, a Python SUBSET — NOT CPython. Ignore any "
+            "generic \"standard libraries: re, json, collections, math, etc.\" claim "
+            "elsewhere in these instructions; that boilerplate is WRONG here. The "
+            "ACTUAL available stdlib is: re, json, math, datetime, typing, os, sys. "
+            "NOT available (importing raises ModuleNotFoundError): random, time, "
+            "secrets, hashlib, collections, itertools, functools, string, statistics, "
+            "uuid, base64, and most others. `os` is present but minimal (no os.urandom). "
+            "Do NOT probe for these one-by-one — assume this list is the truth. If you "
+            "need randomness, time, hashing, or another missing module, don't silently "
+            "hand-roll a weak substitute — tell the user what's missing and ask how to "
+            "proceed (there may be a host tool, or they can advise)."
+        )
+
     # ── Snapshot persistence (fully internal) ────────────────────────────
 
     def _restore_once(self) -> None:
@@ -156,9 +181,11 @@ class MontyInterpreter:
         try:
             self._snapshot_path.parent.mkdir(parents=True, exist_ok=True)
             self._snapshot_path.write_bytes(self._repl.dump())
-        except OSError:
-            # Never let a snapshot-write failure break the turn.
-            pass
+        except OSError as e:
+            logger.warning(
+                "Failed to save REPL snapshot to %s (%s); session may not survive a restart.",
+                self._snapshot_path, e,
+            )
 
     # ── Execution (CodeInterpreter protocol) ─────────────────────────────
 

@@ -45,7 +45,7 @@ def peek_image(image_path: str, query: str = "Describe what you see in this imag
         peek_image("chart.png", "What is the main trend shown in this chart?")
     """
     # Import here to avoid circular dependency
-    from rlmy.agent.main import _require_filesystem_root, _request_filesystem_permission
+    from rlmy.agent.filesystem import _require_filesystem_root, _request_filesystem_permission
     
     # Path resolution: relative → sandbox, absolute → permission check
     path = Path(image_path)

@@ -1,7 +1,7 @@
 """
 Purpose: Reusable RLM components — InterruptableRLM, cooperative SIGINT, trajectory persistence.
 Usage:
-    # As a library (from mainmcp.py or elsewhere):
+    # As a library (from main.py or elsewhere):
     from rlmy.agent.rlm import InterruptableRLM, InterruptFlag, save_trajectory, load_trajectory
 
     # As a standalone CLI:
@@ -149,14 +149,14 @@ class InterruptFlag:
 #    The LLM generates a question, the user responds, the LLM sees the response in
 #    repl_history and continues. This is the PRIMARY interaction path.
 #
-# 2. RARELY: from the between-turns prompt in mainmcp.py's conversation loop
+# 2. RARELY: from the between-turns prompt in main.py's conversation loop
 #    ("What would you like to do next?"). This only fires when the RLM returns
 #    (via SUBMIT or max iterations), which is infrequent.
 #
 # 3. FROM broadcast_user_update: print_only=True mode. No user input collected.
 #
 # Therefore:
-# - Slash commands (/quit, etc.) are checked HERE, not in mainmcp.py's loop
+# - Slash commands (/quit, etc.) are checked HERE, not in main.py's loop
 # - RichMarkdown wrapping is applied HERE for LLM-generated questions
 # - SIGINT handling is managed HERE because the cooperative flag is active during RLM
 #
@@ -236,7 +236,7 @@ def prompt_user(question: str, print_only=False, header: str = ""):
 
     This function is called most frequently from contextual_ask_user_guidance() —
     the LLM's ask_user_guidance tool — many times per RLM turn. The between-turns
-    prompt in mainmcp.py is the RARE caller. All user input flows through here.
+    prompt in main.py is the RARE caller. All user input flows through here.
 
     Features:
     - Multiline input via prompt_toolkit (Enter = newline, Alt+Enter = submit)
@@ -434,7 +434,7 @@ def build_status_header(ctx: RLMContext) -> str:
     """
     Purpose: Build a Rich-formatted status line from RLMContext for display in prompts.
 
-    Why extracted: Used by both contextual tools AND the between-turns prompt in mainmcp.py.
+    Why extracted: Used by both contextual tools AND the between-turns prompt in main.py.
 
     Token display strategy:
     - Primary: trajectory token estimate (always fresh, reflects compaction immediately)
@@ -737,7 +737,7 @@ class InterruptableRLM(dspy.RLM):
 
                     # Phase 3: Process result and persist
                     processed = self._process_execution_result(
-                        action, result, history, output_field_names
+                        action, code, result, history, output_field_names
                     )
                     if isinstance(processed, Prediction):
                         return processed
@@ -753,7 +753,7 @@ class InterruptableRLM(dspy.RLM):
         """
         Purpose: Async version of forward() with same cooperative interrupt handling.
 
-        Required for MCP usage (mainmcp.py) where the event loop is async.
+        Required for MCP usage (main.py) where the event loop is async.
         """
         self._validate_inputs(input_args)
 
@@ -891,207 +891,3 @@ def _handle_slash_command_between_turns(
         return
 
     rprint(f"[yellow]Unknown command: {sig.command.name}[/yellow]")
-
-
-def main(persist_to_disk: bool = False):
-    """
-    Purpose: Main CLI loop with cooperative interrupt handling and conversation continuity.
-    Args:
-        persist_to_disk: If True, trajectory is saved to .trajectory_state.jsonl after every
-                         mutation and recovered on startup. Opt-in because REPL state (variables,
-                         functions) is NOT recoverable across process restarts — the LLM would
-                         see prior code steps but the variables wouldn't exist.
-    Conventions: Ctrl+C during RLM sets flag (checked at iteration boundary).
-                 Ctrl+C at the prompt exits the program (original handler restored).
-                 REPL state (variables, functions, imports) persists across turns within a session.
-    """
-    # --- Setup (only runs when used as standalone CLI) ---
-    # Required for RLM verbose output (reasoning + code at each iteration).
-    # InterruptableRLM's forward/aforward use logger.info() when verbose=True,
-    # but Python's logging module silently drops messages if no handler is configured.
-    # Each entrypoint (mainmcp.py, cli_proto.py main()) must call basicConfig itself.
-    # RichHandler gives syntax-highlighted code blocks and styled log output.
-    from rich.logging import RichHandler
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(message)s",
-        handlers=[RichHandler(console=Console(theme=_MD_THEME), show_path=False, show_time=False, rich_tracebacks=True)],
-    )
-
-    OPUS = "bedrock/us.anthropic.claude-opus-4-6-v1"
-    lm = dspy.LM(model=OPUS, cache=True)
-    dspy.settings.configure(lm=lm)
-
-    class LongContextWithDictQA(dspy.Signature):
-        """Answer the question using the provided context and data dictionary.
-
-        Communication Tools:
-        - Use `broadcast_user_update` (1-way) between significant chunks of work (not within one block)
-        - Use `ask_user_guidance` (2-way) when you need human decision or are unsure
-
-        Filesystem Tools:
-        - `list_files(path="")` - Returns list of file paths (Python list)
-        - `read_file(path="example.md")` - Read from sandbox (relative) or system (absolute path)
-        - `write_file(path="output/result.md", contents="...")` - Write to sandbox only
-
-        MCP Tools (with typed parameters):
-        - `mcp_slack_search(query='search term')` - Search Slack messages
-        - `mcp_slack_batch_get_thread_replies(threads=['id1', 'id2'])` - Get thread replies
-        - `mcp_builder_ReadInternalWebsites(inputs=['url1', 'url2'])` - Read internal websites
-        - `mcp_outlook_email_folders()` - List email folders (no params)
-        - `mcp_outlook_email_read(id='email-id')` - Read email by ID
-
-        Sandbox: ./sandbox/<workspace>/ (unrestricted access)
-        System: Absolute paths (e.g., "/Users/...") require user permission on first access
-
-        **Important**: Take an out if necessary. You are allowed to not know the answer.
-        Feel free to say "I don't know" whenever applicable.
-        Ask for user guidance whenever you're unsure.
-
-        Also, any `print()`s you do are for your own internal reasoning. I can't see it.
-        Use broadcast_user_update to report findings (non-blocking).
-        When you're done, always ask for the next task (there is always a next task).
-        Use the ask_user_guidance tool (blocking) for that. otherwise you will be stuck in an infinite loop.
-        """
-
-        question: str = dspy.InputField(desc="Your starting point")
-        answer: str = dspy.OutputField(desc="Concise final answer")
-
-    persistent_repl = PythonInterpreter()
-    conversation_trajectory: list[dict] = []
-
-    # Opt-in: recover trajectory from disk
-    if persist_to_disk:
-        conversation_trajectory = load_trajectory()
-        if conversation_trajectory:
-            n = len(conversation_trajectory)
-            rprint(
-                Panel(
-                    f"Recovered {n} trajectory steps from previous session.\n"
-                    "⚠️  Note: REPL variables from prior session are NOT recovered.",
-                    title="[bold cyan]🔄 Session Recovered[/bold cyan]",
-                    border_style="cyan",
-                    padding=(1, 2),
-                    width=_panel_width(),
-                )
-            )
-
-    # Mutable context — tools hold a reference, see updates automatically.
-    # The trajectory callback updates fields in-place between iterations.
-    rlm_context = RLMContext(
-        trajectory=list(conversation_trajectory),
-        max_iterations=100,
-    )
-
-    # Wrap contextual tools — LLM sees clean signatures, context injected at call time
-    tools = make_contextual_tools(DEFAULT_CONTEXTUAL_TOOLS, rlm_context)
-
-    # Callback: simple pass-through. /compact and /reset set the interrupt flag
-    # to end the turn, then post-turn code compacts result.trajectory.
-    def on_trajectory_update(trajectory: list[dict]):
-        nonlocal conversation_trajectory
-        conversation_trajectory = trajectory
-        rlm_context.trajectory = trajectory
-        rlm_context.iteration = len(trajectory)
-        if persist_to_disk:
-            save_trajectory(trajectory)
-
-    rlm = InterruptableRLM(
-        LongContextWithDictQA,
-        verbose=True,
-        tools=tools,
-        max_iterations=100,
-        max_llm_calls=350,
-        interpreter=persistent_repl,
-        trajectory_callback=on_trajectory_update,
-    )
-
-    # Back-reference: context holds the RLM instance (for tools that need config access)
-    rlm_context.rlm = rlm
-
-    try:
-        while True:
-            try:
-                # Route through prompt_user for slash command support.
-                # SlashCommandSignal for context-dependent commands caught below.
-                status = build_status_header(rlm_context)
-                user_input = prompt_user("What would you like to do?", header=status)
-            except (KeyboardInterrupt, EOFError):
-                rprint("\n[bold]Goodbye![/bold]")
-                break
-            except SlashCommandSignal as sig:
-                _handle_slash_command_between_turns(
-                    sig, rlm_context, conversation_trajectory, rlm, persist_to_disk
-                )
-                continue
-
-            if not user_input.strip():
-                continue
-
-            # Record user's question BEFORE the RLM call — it triggered the steps that follow,
-            # so it must appear before them in the chronological trajectory.
-            conversation_trajectory.append({
-                "reasoning": f"<user-input>{user_input}</user-input>",
-                "code": "",
-                "output": "",
-            })
-
-            # Inject prior context (including the new user input) so the RLM sees full history
-            rlm.set_prior_trajectory(conversation_trajectory)
-            result = rlm(question=user_input)
-
-            # Update trajectory from result — RLM steps now follow the user input entry
-            conversation_trajectory = list(result.trajectory)
-
-            # Post-turn compaction: /compact set interrupt flag to end the turn.
-            # Now compact result.trajectory and auto-restart with smaller history.
-            if rlm_context.metadata.pop("compaction_requested", False):
-                compacted, _stats = compact_trajectory(conversation_trajectory)
-                conversation_trajectory = compacted
-                rlm_context.trajectory = conversation_trajectory
-                if persist_to_disk:
-                    save_trajectory(conversation_trajectory)
-                rprint("[bold cyan]🔄 Restarting with compacted trajectory...[/bold cyan]")
-                continue  # skip interrupted/answer panel, go to prompt
-
-            # Post-turn reset: clear everything and restart fresh.
-            if rlm_context.metadata.pop("reset_requested", False):
-                conversation_trajectory = []
-                rlm_context.trajectory = conversation_trajectory
-                rlm_context.iteration = 0
-                if persist_to_disk:
-                    clear_trajectory()
-                continue
-
-            if persist_to_disk:
-                save_trajectory(conversation_trajectory)
-
-            if getattr(result, "interrupted", False):
-                n_steps = len(result.trajectory)
-                rprint(
-                    Panel(
-                        f"Progress saved ({n_steps} steps in trajectory).\n"
-                        "Type your next message to continue with full context.",
-                        title="[bold red]⚡ Session Interrupted[/bold red]",
-                        border_style="red",
-                        padding=(1, 2),
-                        width=_panel_width(),
-                    )
-                )
-            else:
-                rprint(
-                    Panel(
-                        RichMarkdown(result.answer or "*(no answer produced)*"),
-                        title="[bold green]✅ Final Answer[/bold green]",
-                        border_style="green",
-                        padding=(1, 2),
-                        width=_panel_width(),
-                    )
-                )
-    finally:
-        # Clean up the persistent interpreter on exit
-        persistent_repl.shutdown()
-
-
-if __name__ == "__main__":
-    main()

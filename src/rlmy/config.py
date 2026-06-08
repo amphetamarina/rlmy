@@ -1,6 +1,6 @@
 """
 Purpose: Configuration loader for RLMY.
-Usage: config = RLMYConfig(); lm, sub_lm = config.configure_dspy()
+Usage: config = RLMYConfig(); main_model, sub_model = config.get_models()
 Key Components: RLMYConfig (env vars > config file > fail)
 Conventions: Config file is optional. Env vars always take precedence.
              Users manage credentials themselves (ANTHROPIC_API_KEY, AWS_PROFILE, etc.)
@@ -17,7 +17,6 @@ except ImportError:
     import tomli as tomllib  # Fallback for Python 3.10
 
 import platformdirs
-import dspy
 
 
 class RLMYConfig:
@@ -94,21 +93,6 @@ class RLMYConfig:
               export RLM_MAIN_MODEL='anthropic/claude-opus-4'
               export RLM_SUB_MODEL='bedrock/us.anthropic.claude-opus-4-8'
         """).strip())
-    
-    def configure_dspy(self) -> tuple[dspy.LM, dspy.LM]:
-        """
-        Configure DSPy with main and sub LMs from config.
-        
-        Returns:
-            tuple[dspy.LM, dspy.LM]: (main_lm, sub_lm) - both configured LM instances
-        """
-        main_str, sub_str = self.get_models()
-        
-        main_lm = dspy.LM(model=main_str, cache=True)
-        sub_lm = dspy.LM(model=sub_str, cache=True)
-        
-        dspy.configure(lm=main_lm)
-        return main_lm, sub_lm
     
     def ensure_sandboxes_dir(self):
         """Ensure sandboxes directory exists."""
