@@ -7,24 +7,8 @@ set -euo pipefail
 echo "🚀 Installing rlmy..."
 echo ""
 
-# ── 1. Deno (required for WASM sandbox) ─────────────────────────────────────
-echo "=== Installing Deno (WASM sandbox) ==="
-if command -v deno &>/dev/null; then
-    echo "  ✓ Deno already installed: $(deno --version | head -1)"
-else
-    curl -fsSL https://deno.land/install.sh | sh
-    export PATH="$HOME/.deno/bin:$PATH"
-    if command -v deno &>/dev/null; then
-        echo "  ✓ Deno installed: $(deno --version | head -1)"
-    else
-        echo "  ❌ Deno installation failed."
-        echo "     Install manually: https://docs.deno.com/runtime/getting_started/installation/"
-        exit 1
-    fi
-fi
-echo ""
 
-# ── 2. uv (Python package manager) ──────────────────────────────────────────
+# ── 1. uv (Python package manager) ──────────────────────────────────────────
 echo "=== Installing uv (Python package manager) ==="
 if command -v uv &>/dev/null; then
     echo "  ✓ uv already installed: $(uv --version)"
@@ -34,12 +18,12 @@ else
 fi
 echo ""
 
-# ── 3. rlmy (installed as a global CLI tool) ─────────────────────────────────
+# ── 2. rlmy (installed as a global CLI tool) ─────────────────────────────────
 echo "=== Installing rlmy ==="
 uv tool install rlmy
 echo ""
 
-# ── 4. MCP tools config (optional) ──────────────────────────────────────────
+# ── 3. MCP tools config (optional) ──────────────────────────────────────────
 CONFIG_DIR="$HOME/.config/rlmy"
 mkdir -p "$CONFIG_DIR"
 

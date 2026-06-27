@@ -1,6 +1,6 @@
 [project]
 name = "rlmy"
-version = "0.1.2"
+version = "0.1.4"
 description = "An interactive RLM (Recursive Language Model) agent built on DSPy"
 readme = "README.md"
 license = {text = "MIT"}

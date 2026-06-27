@@ -7,7 +7,7 @@
 - An AI coding agent that runs in your terminal
 - Uses DSPy's RLM framework — the LLM writes and executes Python code iteratively
 - Connects to MCP servers (Slack, internal tools, etc.) as additional tools
-- Maintains conversation state across turns (trajectory persistence)
+- Maintains conversation state across turns (trajectory persistence, including REPL variables)
 - Supports cooperative interrupt (Ctrl+C pauses gracefully)
 
 ## Key Features
@@ -23,15 +23,26 @@
 ## Prerequisites
 
 - Valid LLM credentials (Anthropic API key, AWS profile for Bedrock, etc.)
-- Python 3.12+ and Deno are installed automatically by the setup script
+- Any of these work thanks to LiteLLM:
+
+```sh
+export OPENAI_API_KEY="sk-proj-..."
+
+export GROQ_API_KEY="gsk_..."
+
+export GEMINI_API_KEY="AQ.Ab8R..."
+
+export AWS_ACCESS_KEY="..."
+export AWS_SECRET="..."
+```
 
 ## Installation
 
-Recommended (installs Deno + uv + rlmy in one command):
+Recommended (installs uv + rlmy in one command):
 
     curl -LsSf https://raw.githubusercontent.com/diego-lima/rlmy/main/setup_install.sh | bash
 
-Alternative (if you already have Deno and uv):
+Alternative (if you already have uv):
 
     uv tool install rlmy
 
@@ -43,7 +54,7 @@ Alternative (if you already have Deno and uv):
 - Workspaces are created in `~/.config/rlmy/sandboxes/`
 - Ctrl+C pauses gracefully (doesn't lose work)
 
-To skip the wizard (headless/CI):
+To skip the wizard:
 
     export RLM_MAIN_MODEL='bedrock/us.anthropic.claude-sonnet-4-6'
     export RLM_SUB_MODEL='bedrock/us.anthropic.claude-sonnet-4-6'
@@ -67,7 +78,7 @@ Watch it fetch the data, explore it with code, and teach you something you didn'
 
 ## MCP Tools (optional)
 
-- Config location: `~/.config/rlmy/mcp_servers.json`
+- Config location: `~/.config/rlmy/mcp_servers.json` (refer to `mcp_servers.example.json`)
 - The setup script creates an empty template
 - Edit it to connect Slack, internal tools, or any MCP-compatible server
 - Agent starts without MCP if config is empty (no crash)
@@ -92,3 +103,7 @@ MIT
 
 - Early release — works well for the author, may have rough edges
 - Feedback welcome via GitHub issues
+
+## Disclaimer
+
+This is an experimental tool that I vibe-coded over time for my own needs.

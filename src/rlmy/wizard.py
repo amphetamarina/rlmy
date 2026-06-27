@@ -15,22 +15,21 @@ from rich.markdown import Markdown
 
 # Reference table of popular models (rendered as markdown)
 MODEL_REFERENCE_TABLE = """
-**Example Models** (any DSPy-compatible model string works — these are just common ones):
+**Example Models** (any DSPy-compatible model string works):
 
 | Provider  | Tier              | Model String                                    |
 |-----------|-------------------|-------------------------------------------------|
-| Anthropic | High (best)       | `anthropic/claude-opus-4`                       |
-| Anthropic | Mid (recommended) | `bedrock/us.anthropic.claude-opus-4-8`                     |
-| Anthropic | Low (fast)        | `anthropic/claude-haiku-4`                      |
 | Bedrock   | High              | `bedrock/us.anthropic.claude-opus-4-6-v1`       |
-| Bedrock   | Mid               | `bedrock/us.anthropic.claude-sonnet-4-5-v1:0`   |
+| Bedrock   | Mid (recommended) | `bedrock/us.anthropic.claude-sonnet-4-5-v1:0`   |
 | Bedrock   | Low               | `bedrock/us.anthropic.claude-haiku-4-5-v1:0`    |
-| OpenAI    | High              | `openai/gpt-4`                                  |
-| OpenAI    | Low               | `openai/gpt-3.5-turbo`                          |
-| Groq      | Fast              | `groq/llama3-70b-8192`                          |
-| Ollama    | Local             | `ollama/llama2`                                 |
+| OpenAI    | High              | `openai/gpt-5.5`                                |
+| OpenAI    | Mid               | `openai/gpt-4o-mini`                            |
+| Groq      | High              | `groq/openai/gpt-oss-120b`                      |
+| Groq      | Low               | `groq/openai/gpt-oss-20b`                       |
+| Gemini    | High              | `gemini/gemini-3.5-flash`                       |
+| Gemini    | Low               | `gemini/gemini-3.1-flash-lite`                  |
 
-The **main model** is your strategist (plans, writes code).  
+The **main model** is your strategist (plans, writes code).
 The **sub model** runs inside the REPL for `llm_query()` calls (can be same or cheaper).
 """
 
@@ -108,7 +107,8 @@ def run_wizard(config_dir: Path, config_file: Path) -> bool:
         # - For Anthropic models: export ANTHROPIC_API_KEY='sk-ant-...'
         # - For Bedrock models: configure AWS credentials (aws configure)
         # - For OpenAI models: export OPENAI_API_KEY='sk-...'
-        # - For Groq models: export GROQ_API_KEY='...'
+        # - For Groq models: export GROQ_API_KEY='gsk_...'
+        # - For Gemini models: export GEMINI_API_KEY='...'
 
         # To override via environment:
         # export RLM_MAIN_MODEL='your-model'
@@ -139,13 +139,13 @@ def run_wizard(config_dir: Path, config_file: Path) -> bool:
                Or set environment variables:
                [cyan]export AWS_PROFILE='your-profile'[/cyan]
         """).strip())
-    elif "anthropic" in main_model:
+    elif "groq" in main_model:
         console.print(dedent("""
-            1. Get an Anthropic API key:
-               https://console.anthropic.com/settings/keys
+            1. Get a Groq API key:
+               https://console.groq.com/keys
 
             2. Set the environment variable:
-               [cyan]export ANTHROPIC_API_KEY='sk-ant-...'[/cyan]
+               [cyan]export GROQ_API_KEY='gsk_...'[/cyan]
         """).strip())
     elif "openai" in main_model:
         console.print(dedent("""
@@ -155,21 +155,13 @@ def run_wizard(config_dir: Path, config_file: Path) -> bool:
             2. Set the environment variable:
                [cyan]export OPENAI_API_KEY='sk-...'[/cyan]
         """).strip())
-    elif "groq" in main_model:
+    elif "gemini" in main_model:
         console.print(dedent("""
-            1. Get a Groq API key:
-               https://console.groq.com/keys
+            1. Get a Gemini API key:
+               https://aistudio.google.com/apikey
 
             2. Set the environment variable:
-               [cyan]export GROQ_API_KEY='...'[/cyan]
-        """).strip())
-    elif "ollama" in main_model:
-        console.print(dedent("""
-            1. Install Ollama:
-               https://ollama.ai
-
-            2. Pull the model:
-               [cyan]ollama pull llama2[/cyan]
+               [cyan]export GEMINI_API_KEY='...'[/cyan]
         """).strip())
     else:
         console.print("[dim]Set up credentials as needed for your provider.[/dim]")

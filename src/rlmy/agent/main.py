@@ -247,6 +247,9 @@ async def run_agent(
         _legacy_json.rename(trajectory_file)
         # Content is still JSON-array format; load_trajectory()'s legacy fallback handles it
 
+    # Show configured models for transparency
+    rprint(f"[bold cyan]🤖 Models:[/bold cyan] Main=[yellow]{lm.model}[/yellow] | Sub=[yellow]{sub_lm.model}[/yellow]")
+    
     rprint("[bold cyan]🚀 Initializing MCP Tools...[/bold cyan]")
 
     # Use context manager to maintain MCP connections
