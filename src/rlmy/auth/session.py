@@ -27,7 +27,10 @@ def ensure_fresh_token(
     """
     token = store.get(provider)
     if token is None:
-        raise RuntimeError(f"Not signed in to {provider}. Run the sign-in flow first.")
+        raise RuntimeError(
+            f"Not signed in to '{provider}'. "
+            f"Run `rlmy auth login {provider.removesuffix('-oauth')}` to sign in."
+        )
     if token.needs_refresh(now=now):
         token = refresher(token)
         store.set(provider, token)
