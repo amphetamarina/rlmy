@@ -34,6 +34,13 @@ def _decode_jwt_payload(token: str) -> dict:
 
 
 def parse_codex_auth(data: dict) -> OAuthToken:
+    """
+    Purpose: Turn a Codex CLI auth.json payload into an OAuthToken.
+    Usage Patterns: account_id comes from the tokens block, falling back to the
+        id_token's chatgpt_account_id claim; expires_at and plan_type are read from
+        the (unverified) id_token payload. Raises ValueError when no OAuth tokens
+        are present (e.g. an API-key-mode auth.json).
+    """
     tokens = data.get("tokens", data)
     access = tokens.get("access_token")
     refresh_token = tokens.get("refresh_token")
@@ -85,6 +92,12 @@ def _urllib_post_json(url: str, body: dict, headers: dict | None = None) -> dict
 
 
 def refresh(token: OAuthToken, post: PostJson = _urllib_post_json) -> OAuthToken:
+    """
+    Purpose: Exchange a refresh token for a fresh access token via OpenAI OAuth.
+    Usage Patterns: post is injected (defaults to a urllib call) so the exchange is
+        unit-testable offline. Reuses the prior refresh_token when the response
+        omits a new one; preserves account_id from the existing token.
+    """
     resp = post(TOKEN_URL, {
         "client_id": CLIENT_ID,
         "grant_type": "refresh_token",

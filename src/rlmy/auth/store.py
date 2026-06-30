@@ -18,7 +18,13 @@ DEFAULT_REFRESH_SKEW = 300.0
 
 @dataclass
 class OAuthToken:
-    """One provider's OAuth credentials. expires_at is epoch seconds."""
+    """
+    Purpose: One subscription provider's OAuth credentials.
+    Attributes: access_token (bearer), refresh_token, expires_at (epoch seconds),
+        account_id (provider account scope, optional), plan_type (e.g. "plus").
+    Usage Patterns: Call needs_refresh(now) before using access_token; refresh via
+        the provider module when it returns True.
+    """
 
     access_token: str
     refresh_token: str
@@ -27,6 +33,8 @@ class OAuthToken:
     plan_type: str | None = None
 
     def needs_refresh(self, now: float, skew: float = DEFAULT_REFRESH_SKEW) -> bool:
+        # Refresh slightly before real expiry so an in-flight call can't race the
+        # token lapsing mid-request.
         return now >= self.expires_at - skew
 
     @classmethod
@@ -36,7 +44,13 @@ class OAuthToken:
 
 
 class AuthStore:
-    """Read/write OAuth tokens keyed by provider id, in a 0600 JSON file."""
+    """
+    Purpose: Persist OAuth tokens per provider in a 0600 JSON file.
+    Attributes: path (defaults to ~/.config/rlmy/auth.json).
+    Usage Patterns: get/set/remove by provider id. Kept separate from config.toml
+        so secrets never live in plain config; a missing or corrupt file reads as
+        empty rather than raising.
+    """
 
     def __init__(self, path: Path | None = None):
         self.path = path or (Path.home() / ".config" / "rlmy" / "auth.json")
