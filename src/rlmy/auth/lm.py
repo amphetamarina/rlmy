@@ -10,11 +10,11 @@ Conventions: OAuthLM holds no request logic of its own beyond applying credentia
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
 from typing import Callable
 
 import dspy
 from litellm.types.llms.openai import ResponsesAPIStreamEvents
+from openai.types.responses import ResponseOutputMessage, ResponseOutputText
 
 from rlmy.auth.openai_codex import BACKEND_BASE, build_codex_headers
 from rlmy.auth.openai_codex import refresh as codex_refresh
@@ -29,16 +29,14 @@ _OUTPUT_TEXT_DELTA = ResponsesAPIStreamEvents.OUTPUT_TEXT_DELTA
 HeaderBuilder = Callable[[OAuthToken], dict]
 
 
-@dataclass
-class _SyntheticTextContent:
-    text: str
-    type: str = "output_text"
-
-
-@dataclass
-class _SyntheticMessage:
-    content: list
-    type: str = "message"
+def _assistant_message(text: str) -> ResponseOutputMessage:
+    return ResponseOutputMessage(
+        id="msg_reassembled",
+        type="message",
+        role="assistant",
+        status="completed",
+        content=[ResponseOutputText(type="output_text", text=text, annotations=[])],
+    )
 
 
 class _ResponseStreamReducer:
@@ -73,20 +71,25 @@ class _ResponseStreamReducer:
         if self._completed is None:
             raise RuntimeError("Codex response stream ended without a completed event.")
         if not getattr(self._completed, "output", None):
-            # Present the assistant text as one message whose content exposes a
-            # real `.text` attribute. Raw OUTPUT_ITEM_DONE items can't be reused
-            # directly: litellm gives their content as dicts, but DSPy's parser
-            # does attribute access (content_item.text).
-            text = "".join(self._text_parts) or self._text_from_items()
-            if text:
-                self._completed.output = [
-                    _SyntheticMessage(content=[_SyntheticTextContent(text)])
-                ]
+            # Codex's completed event has empty output; rebuild the assistant text
+            # as one real ResponseOutputMessage — proper .text attribute for DSPy's
+            # parser, and a pydantic type so model_dump/inspect_history stay clean.
+            # Raw litellm items can't be reused: their content is dicts, not objects.
+            text = "".join(self._text_parts) or self._text_from_message_items()
+            if not text:
+                raise RuntimeError(
+                    "Codex stream completed with no assistant text "
+                    "(the model returned only reasoning or an empty response)."
+                )
+            self._completed.output = [_assistant_message(text)]
         return self._completed
 
-    def _text_from_items(self) -> str:
+    def _text_from_message_items(self) -> str:
         parts = []
         for item in self._items:
+            itype = item.get("type") if isinstance(item, dict) else getattr(item, "type", None)
+            if itype != "message":
+                continue  # skip reasoning/tool items — only the message is the answer
             content = (
                 item.get("content") if isinstance(item, dict)
                 else getattr(item, "content", None)
@@ -103,8 +106,9 @@ class _ResponseStreamReducer:
 
 def _collect_responses_stream(result):
     # Codex requires stream=true, so litellm returns a stream of events while
-    # DSPy's parser expects one response object. Reduce the stream (passthrough
-    # if the result is already a unary response).
+    # DSPy's parser expects one response object. Discriminator: litellm's
+    # streaming iterator exposes .response/.completed_response but no .output,
+    # whereas a unary ResponsesAPIResponse has .output — so .output means "done".
     if hasattr(result, "output"):
         return result
     reducer = _ResponseStreamReducer()
@@ -162,10 +166,15 @@ class OAuthLM(dspy.LM):
         token = ensure_fresh_token(
             self._store, self._provider, self._refresher, self._time_fn()
         )
+        # Mutates shared self.kwargs; safe under concurrent calls (e.g. sub_lm
+        # batched queries) because every writer sets the same fresh token/headers.
         self.kwargs["api_key"] = token.access_token
         self.kwargs["headers"] = self._header_builder(token)
 
     def forward(self, prompt=None, messages=None, **kwargs):
+        # Note: DSPy's global usage_tracker reads usage off the pre-reduced stream
+        # (so it records {} here); lm.history usage is computed post-reduce and is
+        # correct. Acceptable for a subscription (no per-token billing).
         self._apply_credentials()
         return _collect_responses_stream(
             super().forward(prompt=prompt, messages=messages, **kwargs)

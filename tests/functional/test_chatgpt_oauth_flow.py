@@ -11,6 +11,7 @@ boundary (dspy.LM.forward) rather than inside our own code.
 import time
 
 import dspy
+import pytest
 from litellm.types.llms.openai import ResponsesAPIStreamEvents
 
 from rlmy.auth.lm import build_lm
@@ -65,16 +66,31 @@ def test_call_stamps_fresh_bearer_and_codex_headers(tmp_path, monkeypatch):
     assert seen["stream"] is True
 
 
-def test_call_aggregates_streamed_response_to_completed(tmp_path, monkeypatch):
-    final = _Resp()
+def test_call_raises_when_stream_has_no_assistant_text(tmp_path, monkeypatch):
+    completed = _Resp()
     stream = [
-        _Event("response.output_text.delta"),
-        _Event(ResponsesAPIStreamEvents.RESPONSE_COMPLETED, response=final),
+        _Event(ResponsesAPIStreamEvents.OUTPUT_TEXT_DELTA),  # delta=None
+        _Event(ResponsesAPIStreamEvents.RESPONSE_COMPLETED, response=completed),
     ]
     monkeypatch.setattr(dspy.LM, "forward", lambda self, **kw: stream)
     lm = build_lm("chatgpt-oauth/gpt-5.5", store=_signed_in(tmp_path))
 
-    assert lm.forward(messages=[{"role": "user", "content": "hi"}]) is final
+    with pytest.raises(RuntimeError, match="no assistant text"):
+        lm.forward(messages=[{"role": "user", "content": "hi"}])
+
+
+def test_call_ignores_reasoning_only_items_and_raises(tmp_path, monkeypatch):
+    completed = _Resp()
+    item = {"type": "reasoning", "content": [{"type": "reasoning_text", "text": "hmm"}]}
+    stream = [
+        _Event(ResponsesAPIStreamEvents.OUTPUT_ITEM_DONE, item=item),
+        _Event(ResponsesAPIStreamEvents.RESPONSE_COMPLETED, response=completed),
+    ]
+    monkeypatch.setattr(dspy.LM, "forward", lambda self, **kw: stream)
+    lm = build_lm("chatgpt-oauth/gpt-5.5", store=_signed_in(tmp_path))
+
+    with pytest.raises(RuntimeError, match="no assistant text"):
+        lm.forward(messages=[{"role": "user", "content": "hi"}])
 
 
 def test_call_reconstructs_text_from_item_done_dict_content(tmp_path, monkeypatch):
