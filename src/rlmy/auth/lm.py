@@ -76,11 +76,18 @@ class OAuthLM(dspy.LM):
         return await super().aforward(prompt=prompt, messages=messages, **kwargs)
 
 
+CHATGPT_PROVIDER = CHATGPT_OAUTH_PREFIX.rstrip("/")
+
+
 def _make_codex_oauth_lm(model: str, *, store=None, refresher=None, **kwargs) -> OAuthLM:
     return OAuthLM(
+        # The "openai/" prefix only selects LiteLLM's OpenAI transport; LiteLLM
+        # strips it before the wire, so the backend receives the bare name
+        # (e.g. "gpt-5.5") it requires. stream/store flags for the Responses
+        # call come from DSPy's litellm_responses_completion defaults.
         model=f"openai/{model}",
         api_base=BACKEND_BASE,
-        provider="chatgpt-oauth",
+        provider=CHATGPT_PROVIDER,
         store=store or AuthStore(),
         refresher=refresher or codex_refresh,
         header_builder=build_codex_headers,

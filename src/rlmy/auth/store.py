@@ -57,7 +57,14 @@ class AuthStore:
 
     def get(self, provider: str) -> OAuthToken | None:
         entry = self._load().get(provider)
-        return OAuthToken.from_dict(entry) if entry else None
+        if not entry:
+            return None
+        try:
+            return OAuthToken.from_dict(entry)
+        except TypeError:
+            # Partially-written/corrupt entry (missing a required field): treat
+            # as absent rather than crashing the caller.
+            return None
 
     def set(self, provider: str, token: OAuthToken) -> None:
         data = self._load()
@@ -81,8 +88,11 @@ class AuthStore:
             return {}
 
     def _save(self, data: dict) -> None:
+        # Write to a 0600 temp file then atomically replace, so a reader never
+        # sees torn JSON and the secret is never briefly world-readable.
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as f:
             f.write(json.dumps(data, indent=2))
-        os.chmod(self.path, 0o600)
+        os.replace(tmp, self.path)

@@ -6,6 +6,7 @@ pure expiry decision (needs_refresh). No network and no real provider tokens —
 the store is pure file + time logic, so a tmp_path and an injected clock cover it.
 """
 
+import json
 import stat
 
 from rlmy.auth.store import AuthStore, OAuthToken
@@ -54,6 +55,12 @@ class TestRoundTrip:
         assert store.get("chatgpt-oauth").access_token == "x"
         assert store.get("xai-oauth").access_token == "y"
         assert sorted(store.providers()) == ["chatgpt-oauth", "xai-oauth"]
+
+    def test_entry_missing_required_field_reads_as_none(self, tmp_path):
+        # A partially-corrupt entry must not crash get(); it reads as absent.
+        path = tmp_path / "auth.json"
+        path.write_text(json.dumps({"chatgpt-oauth": {"refresh_token": "r"}}))
+        assert AuthStore(path=path).get("chatgpt-oauth") is None
 
     def test_unknown_fields_in_file_are_ignored(self, tmp_path):
         # Forward-compat: a newer schema with extra keys must not break loading.

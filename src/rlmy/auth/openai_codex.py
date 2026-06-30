@@ -33,6 +33,22 @@ def _decode_jwt_payload(token: str) -> dict:
     return json.loads(base64.urlsafe_b64decode(segment))
 
 
+def _expiry_from_jwt(token: str | None) -> float | None:
+    if not token or token.count(".") < 2:
+        return None
+    try:
+        exp = _decode_jwt_payload(token).get("exp")
+    except (ValueError, IndexError):
+        return None
+    return float(exp) if exp is not None else None
+
+
+def _resolve_expiry(access_token: str | None, id_token: str | None) -> float:
+    # Prefer the access token's own exp (that is what the backend validates);
+    # fall back to the id_token, then to 0.0 (forces a refresh on first use).
+    return _expiry_from_jwt(access_token) or _expiry_from_jwt(id_token) or 0.0
+
+
 def parse_codex_auth(data: dict) -> OAuthToken:
     """
     Purpose: Turn a Codex CLI auth.json payload into an OAuthToken.
@@ -51,7 +67,7 @@ def parse_codex_auth(data: dict) -> OAuthToken:
     return OAuthToken(
         access_token=access,
         refresh_token=refresh_token,
-        expires_at=float(claims.get("exp", 0)),
+        expires_at=_resolve_expiry(access, tokens.get("id_token")),
         account_id=tokens.get("account_id") or auth_claim.get("chatgpt_account_id"),
         plan_type=auth_claim.get("chatgpt_plan_type"),
     )
@@ -98,17 +114,28 @@ def refresh(token: OAuthToken, post: PostJson = _urllib_post_json) -> OAuthToken
         unit-testable offline. Reuses the prior refresh_token when the response
         omits a new one; preserves account_id from the existing token.
     """
-    resp = post(TOKEN_URL, {
-        "client_id": CLIENT_ID,
-        "grant_type": "refresh_token",
-        "refresh_token": token.refresh_token,
-        "scope": "openid profile email",
-    })
-    claims = _decode_jwt_payload(resp["id_token"]) if resp.get("id_token") else {}
+    import urllib.error
+
+    try:
+        resp = post(TOKEN_URL, {
+            "client_id": CLIENT_ID,
+            "grant_type": "refresh_token",
+            "refresh_token": token.refresh_token,
+            "scope": "openid profile email",
+        })
+    except urllib.error.HTTPError as e:
+        if e.code in (400, 401, 403):
+            raise RuntimeError(
+                "ChatGPT sign-in has expired or was revoked. "
+                "Re-run `rlmy auth login chatgpt` to sign in again."
+            ) from e
+        raise
+    id_token = resp.get("id_token")
+    claims = _decode_jwt_payload(id_token) if id_token else {}
     return OAuthToken(
         access_token=resp["access_token"],
         refresh_token=resp.get("refresh_token") or token.refresh_token,
-        expires_at=float(claims.get("exp", 0)),
+        expires_at=_resolve_expiry(resp.get("access_token"), id_token),
         account_id=token.account_id,
         plan_type=token.plan_type or claims.get(AUTH_CLAIM, {}).get("chatgpt_plan_type"),
     )

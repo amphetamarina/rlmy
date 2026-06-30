@@ -63,6 +63,18 @@ class TestParseCodexAuth:
         data["tokens"].pop("account_id")
         assert parse_codex_auth(data).account_id == "from-claim"
 
+    def test_expiry_prefers_access_token_when_it_is_a_jwt(self):
+        # The backend validates the access token, so its exp wins over the
+        # id_token's when the access token is itself a JWT.
+        data = _codex_auth(exp=2000000000)
+        data["tokens"]["access_token"] = _jwt({"exp": 1900000000})
+        assert parse_codex_auth(data).expires_at == 1900000000
+
+    def test_expiry_falls_back_to_id_token_for_opaque_access_token(self):
+        data = _codex_auth(exp=2000000000)
+        data["tokens"]["access_token"] = "opaque-not-a-jwt"
+        assert parse_codex_auth(data).expires_at == 2000000000
+
     def test_missing_oauth_tokens_raises(self):
         data = _codex_auth()
         data["tokens"].pop("refresh_token")
@@ -102,3 +114,13 @@ class TestRefresh:
 
         old = OAuthToken(access_token="old", refresh_token="keep-me", expires_at=0)
         assert refresh(old, post=fake_post).refresh_token == "keep-me"
+
+    def test_rejected_refresh_raises_educational_reauth_error(self):
+        import urllib.error
+
+        def fake_post(url, body, headers=None):
+            raise urllib.error.HTTPError(url, 400, "invalid_grant", {}, None)
+
+        old = OAuthToken(access_token="old", refresh_token="dead", expires_at=0)
+        with pytest.raises(RuntimeError, match="sign in"):
+            refresh(old, post=fake_post)
