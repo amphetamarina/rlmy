@@ -62,6 +62,26 @@ The agent has a two-LM design:
 
 **Example**: Test "clipboard → save → file exists → PIL reads" as one flow, not separate tests for each function.
 
+### Subscription auth (Sign in with ChatGPT)
+
+`src/rlmy/auth/` adds OAuth providers that let users run on a ChatGPT
+subscription instead of an API key. `build_lm()` in `agent/models.py` routes a
+`chatgpt-oauth/<model>` string to an `OAuthLM`; everything else is a normal
+DSPy model string and is untouched.
+
+Non-obvious, learned the hard way against the live backend (these apply ONLY to
+the ChatGPT-subscription Codex backend, not standard providers):
+- It requires `store=false` AND `stream=true`; it rejects anything else.
+- Its `RESPONSE_COMPLETED` event has an empty `output` — the text arrives via
+  `OUTPUT_ITEM_DONE`/`OUTPUT_TEXT_DELTA` events, so `OAuthLM` reassembles the
+  stream into one message (`_ResponseStreamReducer`). Standard OpenAI populates
+  `output` on the completed event, which is why plain DSPy works there but not
+  here. Don't "simplify" this away.
+- Only bare Codex model names work (`gpt-5.5`, `gpt-5.4`); `*-codex` slugs were
+  deprecated for ChatGPT sign-in and provider-prefixed names are rejected.
+- Tokens are imported from `~/.codex/auth.json` (`codex login`) and refreshed
+  independently into `~/.config/rlmy/auth.json`.
+
 ### Virtual Environment
 
 Always use the project's virtual environment:

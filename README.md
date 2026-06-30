@@ -36,6 +36,30 @@ export AWS_ACCESS_KEY="..."
 export AWS_SECRET="..."
 ```
 
+## Sign in with ChatGPT (subscription)
+
+Use your ChatGPT Plus/Pro subscription instead of a per-token API key — no
+`OPENAI_API_KEY` needed.
+
+```sh
+codex login                 # official OpenAI sign-in (writes ~/.codex/auth.json)
+rlmy auth login chatgpt     # imports that login into rlmy and auto-refreshes
+```
+
+Then select a subscription model (bare Codex model names only — `gpt-5.5` or
+`gpt-5.4`):
+
+```sh
+export RLM_MAIN_MODEL='chatgpt-oauth/gpt-5.5'
+export RLM_SUB_MODEL='chatgpt-oauth/gpt-5.4'
+rlmy
+```
+
+`rlmy auth status` shows whether you're signed in; `rlmy auth logout chatgpt`
+clears it. Notes: this routes through OpenAI's Codex backend, so only Codex
+models are available and usage counts against your ChatGPT plan's limits. The
+backend is the same one the Codex CLI uses and is not a documented public API.
+
 ## Installation
 
 Recommended (installs uv + rlmy in one command):
@@ -74,7 +98,7 @@ Watch it fetch the data, explore it with code, and teach you something you didn'
 
 - Priority: env vars > config file > wizard
 - Config file: `~/.config/rlmy/config.toml`
-- Supported model formats: any DSPy model string (e.g., `bedrock/us.anthropic.claude-sonnet-4-6`, `bedrock/us.anthropic.claude-opus-4-6-v1`)
+- Supported model formats: any DSPy model string (e.g., `bedrock/us.anthropic.claude-sonnet-4-6`, `bedrock/us.anthropic.claude-opus-4-6-v1`), or `chatgpt-oauth/<model>` to use a ChatGPT subscription (see "Sign in with ChatGPT" above)
 
 ## MCP Tools (optional)
 
