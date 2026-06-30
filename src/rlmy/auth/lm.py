@@ -10,9 +10,11 @@ Conventions: OAuthLM holds no request logic of its own beyond applying credentia
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from typing import Callable
 
 import dspy
+from litellm.types.llms.openai import ResponsesAPIStreamEvents
 
 from rlmy.auth.openai_codex import BACKEND_BASE, build_codex_headers
 from rlmy.auth.openai_codex import refresh as codex_refresh
@@ -20,8 +22,104 @@ from rlmy.auth.session import Refresher, ensure_fresh_token
 from rlmy.auth.store import AuthStore, OAuthToken
 
 CHATGPT_OAUTH_PREFIX = "chatgpt-oauth/"
+_RESPONSE_COMPLETED = ResponsesAPIStreamEvents.RESPONSE_COMPLETED
+_OUTPUT_ITEM_DONE = ResponsesAPIStreamEvents.OUTPUT_ITEM_DONE
+_OUTPUT_TEXT_DELTA = ResponsesAPIStreamEvents.OUTPUT_TEXT_DELTA
 
 HeaderBuilder = Callable[[OAuthToken], dict]
+
+
+@dataclass
+class _SyntheticTextContent:
+    text: str
+    type: str = "output_text"
+
+
+@dataclass
+class _SyntheticMessage:
+    content: list
+    type: str = "message"
+
+
+class _ResponseStreamReducer:
+    """
+    Purpose: Reassemble a Codex Responses stream into one response object.
+    Usage Patterns: Feed each streamed event, then call finish(). The Codex
+        backend's RESPONSE_COMPLETED event carries usage but an empty `output`;
+        the generated items arrive as OUTPUT_ITEM_DONE events (with text deltas
+        alongside). We reattach those items so DSPy's responses parser finds the
+        text, falling back to a synthetic message built from the text deltas.
+    """
+
+    def __init__(self):
+        self._completed = None
+        self._items = []
+        self._text_parts = []
+
+    def feed(self, event) -> None:
+        etype = getattr(event, "type", None)
+        if etype == _RESPONSE_COMPLETED:
+            self._completed = event.response
+        elif etype == _OUTPUT_ITEM_DONE:
+            item = getattr(event, "item", None)
+            if item is not None:
+                self._items.append(item)
+        elif etype == _OUTPUT_TEXT_DELTA:
+            delta = getattr(event, "delta", None)
+            if delta:
+                self._text_parts.append(delta)
+
+    def finish(self):
+        if self._completed is None:
+            raise RuntimeError("Codex response stream ended without a completed event.")
+        if not getattr(self._completed, "output", None):
+            # Present the assistant text as one message whose content exposes a
+            # real `.text` attribute. Raw OUTPUT_ITEM_DONE items can't be reused
+            # directly: litellm gives their content as dicts, but DSPy's parser
+            # does attribute access (content_item.text).
+            text = "".join(self._text_parts) or self._text_from_items()
+            if text:
+                self._completed.output = [
+                    _SyntheticMessage(content=[_SyntheticTextContent(text)])
+                ]
+        return self._completed
+
+    def _text_from_items(self) -> str:
+        parts = []
+        for item in self._items:
+            content = (
+                item.get("content") if isinstance(item, dict)
+                else getattr(item, "content", None)
+            )
+            for block in content or []:
+                text = (
+                    block.get("text") if isinstance(block, dict)
+                    else getattr(block, "text", None)
+                )
+                if text:
+                    parts.append(text)
+        return "".join(parts)
+
+
+def _collect_responses_stream(result):
+    # Codex requires stream=true, so litellm returns a stream of events while
+    # DSPy's parser expects one response object. Reduce the stream (passthrough
+    # if the result is already a unary response).
+    if hasattr(result, "output"):
+        return result
+    reducer = _ResponseStreamReducer()
+    for event in result:
+        reducer.feed(event)
+    return reducer.finish()
+
+
+async def _acollect_responses_stream(result):
+    if hasattr(result, "output"):
+        return result
+    reducer = _ResponseStreamReducer()
+    async for event in result:
+        reducer.feed(event)
+    return reducer.finish()
 
 
 class OAuthLM(dspy.LM):
@@ -69,22 +167,28 @@ class OAuthLM(dspy.LM):
 
     def forward(self, prompt=None, messages=None, **kwargs):
         self._apply_credentials()
-        return super().forward(prompt=prompt, messages=messages, **kwargs)
+        return _collect_responses_stream(
+            super().forward(prompt=prompt, messages=messages, **kwargs)
+        )
 
     async def aforward(self, prompt=None, messages=None, **kwargs):
         self._apply_credentials()
-        return await super().aforward(prompt=prompt, messages=messages, **kwargs)
+        return await _acollect_responses_stream(
+            await super().aforward(prompt=prompt, messages=messages, **kwargs)
+        )
 
 
 CHATGPT_PROVIDER = CHATGPT_OAUTH_PREFIX.rstrip("/")
 
 
 def _make_codex_oauth_lm(model: str, *, store=None, refresher=None, **kwargs) -> OAuthLM:
-    return OAuthLM(
+    # Streamed responses can't be coherently DSPy-cached; the backend also sets
+    # store=false, so there's nothing to cache. Force it off.
+    kwargs["cache"] = False
+    lm = OAuthLM(
         # The "openai/" prefix only selects LiteLLM's OpenAI transport; LiteLLM
         # strips it before the wire, so the backend receives the bare name
-        # (e.g. "gpt-5.5") it requires. stream/store flags for the Responses
-        # call come from DSPy's litellm_responses_completion defaults.
+        # (e.g. "gpt-5.5") it requires.
         model=f"openai/{model}",
         api_base=BACKEND_BASE,
         provider=CHATGPT_PROVIDER,
@@ -93,6 +197,13 @@ def _make_codex_oauth_lm(model: str, *, store=None, refresher=None, **kwargs) ->
         header_builder=build_codex_headers,
         **kwargs,
     )
+    # The ChatGPT-account Codex backend requires store=false ("Store must be set
+    # to false") and stream=true ("Stream must be set to true"). DSPy passes
+    # unknown kwargs straight through to litellm.responses, so these land in the
+    # Responses request body; the stream is reassembled in _collect_responses_stream.
+    lm.kwargs["store"] = False
+    lm.kwargs["stream"] = True
+    return lm
 
 
 def build_lm(model_string: str, *, store=None, refresher=None, **kwargs):

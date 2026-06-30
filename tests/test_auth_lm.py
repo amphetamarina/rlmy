@@ -33,3 +33,10 @@ class TestBuildLm:
         assert lm.model == "openai/gpt-5.5"
         assert lm.kwargs["api_base"] == BACKEND_BASE
         assert lm.model_type == "responses"
+
+    def test_chatgpt_oauth_lm_sets_codex_responses_flags(self):
+        # The ChatGPT Codex backend requires store=false and stream=true.
+        lm = build_lm("chatgpt-oauth/gpt-5.5")
+        assert lm.kwargs["store"] is False
+        assert lm.kwargs["stream"] is True
+        assert lm.cache is False
