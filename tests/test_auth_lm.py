@@ -9,6 +9,7 @@ unit" testing rule.
 """
 
 import dspy
+import pytest
 
 from rlmy.auth.lm import OAuthLM, build_lm
 from rlmy.auth.openai_codex import BACKEND_BASE
@@ -19,6 +20,12 @@ class TestBuildLm:
         lm = build_lm("openai/gpt-4o-mini", cache=False)
         assert isinstance(lm, dspy.LM)
         assert not isinstance(lm, OAuthLM)
+
+    def test_unknown_oauth_provider_raises_educational_error(self):
+        # An unsupported "*-oauth/" prefix must fail loudly, not silently fall
+        # through to LiteLLM as a bogus provider.
+        with pytest.raises(RuntimeError, match="chatgpt-oauth"):
+            build_lm("xai-oauth/grok-4", cache=False)
 
     def test_chatgpt_oauth_returns_oauth_lm_on_codex_responses_backend(self):
         lm = build_lm("chatgpt-oauth/gpt-5.5", cache=False)

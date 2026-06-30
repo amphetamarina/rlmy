@@ -106,4 +106,9 @@ def build_lm(model_string: str, *, store=None, refresher=None, **kwargs):
     if model_string.startswith(CHATGPT_OAUTH_PREFIX):
         model = model_string[len(CHATGPT_OAUTH_PREFIX):]
         return _make_codex_oauth_lm(model, store=store, refresher=refresher, **kwargs)
+    if "-oauth/" in model_string:
+        raise RuntimeError(
+            f"Unknown subscription provider in {model_string!r}. "
+            f"Supported: {CHATGPT_OAUTH_PREFIX}<model> (e.g. chatgpt-oauth/gpt-5.5)."
+        )
     return dspy.LM(model=model_string, **kwargs)
