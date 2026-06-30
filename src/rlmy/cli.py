@@ -40,7 +40,45 @@ def _parse_args() -> argparse.Namespace:
         help="Code interpreter to use (default: monty; env: RLM_INTERPRETER). "
         "'monty' is pip-only with no extra setup; 'deno'/'pyodide' needs Deno installed.",
     )
+
+    sub = parser.add_subparsers(dest="command")
+    auth_p = sub.add_parser("auth", help="Manage subscription sign-in (ChatGPT)")
+    auth_p.add_argument("action", choices=["login", "logout", "status"])
+    auth_p.add_argument("provider", nargs="?", default="chatgpt", choices=["chatgpt"])
     return parser.parse_args()
+
+
+def _run_auth_command(action: str, provider: str, store=None) -> int:
+    """
+    Purpose: Dispatch `rlmy auth <action> [provider]` against the credential store.
+    Usage Patterns: Returns a process exit code. login raises RuntimeError (caught
+        by main) with sign-in instructions when no Codex login exists; store is
+        injectable for tests.
+    """
+    from .auth.login import CHATGPT_PROVIDER, login_with_codex
+    from .auth.store import AuthStore
+
+    store = store if store is not None else AuthStore()
+    if provider != "chatgpt":
+        print(f"Unknown auth provider: {provider}", file=sys.stderr)
+        return 1
+
+    if action == "login":
+        token = login_with_codex(store)
+        plan = f" ({token.plan_type})" if token.plan_type else ""
+        print(f"Signed in to ChatGPT{plan}.")
+        print("Set your model to 'chatgpt-oauth/gpt-5.5' (or gpt-5.4) to use it.")
+        return 0
+    if action == "status":
+        signed_in = store.get(CHATGPT_PROVIDER) is not None
+        print(f"chatgpt: {'signed in' if signed_in else 'not signed in'}")
+        return 0
+    if action == "logout":
+        store.remove(CHATGPT_PROVIDER)
+        print("Signed out of ChatGPT.")
+        return 0
+    print(f"Unknown auth action: {action}", file=sys.stderr)
+    return 1
 
 
 def _ensure_config() -> tuple[str, str]:
@@ -121,8 +159,16 @@ def _ensure_deno_or_exit() -> None:
 
 def main():
     """Main CLI entry point for RLMY."""
-    print("Starting RLMY...")
     args = _parse_args()
+
+    if getattr(args, "command", None) == "auth":
+        try:
+            sys.exit(_run_auth_command(args.action, args.provider))
+        except RuntimeError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    print("Starting RLMY...")
 
     try:
         # Step 0: Deno is only needed for the Deno/Pyodide interpreter. The
