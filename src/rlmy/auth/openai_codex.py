@@ -50,6 +50,22 @@ def parse_codex_auth(data: dict) -> OAuthToken:
     )
 
 
+def build_codex_headers(token: OAuthToken) -> dict:
+    """
+    Purpose: Headers the ChatGPT-account Codex Responses backend requires.
+    Usage Patterns: Applied per request alongside the bearer. originator marks the
+        client as Codex; OpenAI-Beta opts into the Responses surface; the account
+        header is sent only when known (scopes the call to the right subscription).
+    """
+    headers = {
+        "OpenAI-Beta": "responses=experimental",
+        "originator": "codex_cli_rs",
+    }
+    if token.account_id:
+        headers["ChatGPT-Account-ID"] = token.account_id
+    return headers
+
+
 def import_codex_cli_auth(path: Path = CODEX_AUTH_FILE) -> OAuthToken | None:
     if not path.exists():
         return None
